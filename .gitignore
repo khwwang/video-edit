@@ -4,4 +4,11 @@
 *.vts
 *.pkl
 
+
+# 로그 파일
+*.log
+
+# 기타 큰 파일
+*.zip
+
 text2mesh/body_models/smpl/SMPL_NEUTRAL.pkl
