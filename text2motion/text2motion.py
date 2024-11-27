@@ -41,7 +41,7 @@ os.environ["MESA_GL_VERSION_OVERRIDE"] = "4.1"
 args = option_trans.get_args_parser()
 
 args.dataname = "t2m"
-args.resume_pth = "./pretrained/VQVAE/net_last.pth" if __name__ == '__main' else os.path.join(root_dir, "pretrained/VQVAE/net_last.pth")
+args.resume_pth = "/home/under2/anaconda3/envs/video-editing/HMTV" if __name__ == '__main' else os.path.join(root_dir, "pretrained/VQVAE/net_last.pth")
 args.resume_trans = "./pretrained/VQTransformer_corruption05/net_best_fid.pth" if __name__ == '__main__' else os.path.join(root_dir, "pretrained/VQTransformer_corruption05/net_best_fid.pth")
 args.down_t = 2
 args.depth = 3
@@ -96,8 +96,8 @@ ckpt = torch.load(args.resume_trans, map_location="cpu")
 trans_encoder.load_state_dict(ckpt["trans"], strict=True)
 trans_encoder.eval()
 
-mean = torch.from_numpy(np.load(os.path.join(root_dir, "VQVAEV3_CB1024_CMT_H1024_NRES3/meta/mean.npy")))
-std = torch.from_numpy(np.load(os.path.join(root_dir, "VQVAEV3_CB1024_CMT_H1024_NRES3/meta/mean.npy")))
+mean = torch.from_numpy(np.load(os.path.join(root_dir, "/home/under2/anaconda3/envs/video-editing/HMTV/mean.npy")))
+std = torch.from_numpy(np.load(os.path.join(root_dir, "/home/under2/anaconda3/envs/video-editing/HMTV/std.npy")))
 
 
 if is_cuda:
@@ -106,6 +106,28 @@ if is_cuda:
     mean = mean.cuda()
     std = std.cuda()
 
+import cv2
+import mediapipe as mp
+
+def extract_keypoints(image_path):
+    mp_pose = mp.solutions.pose
+    pose = mp_pose.Pose(static_image_mode=True)
+    image = cv2.imread(image_path)
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # 추출
+    results = pose.process(image_rgb)
+    keypoints = []
+    if results.pose_landmarks:
+        for landmark in results.pose_landmarks.landmark:
+            keypoints.append([landmark.x, landmark.y, landmark.z, landmark.visibility])
+    return keypoints
+
+# from some_3d_pose_library import lift_2d_to_3d
+
+# def keypoints_to_3d(keypoints_2d):
+#     keypoints_3d = lift_2d_to_3d(keypoints_2d)
+#     return keypoints_3d  # shape: (frames, njoints, 3)
 
 def render(motions)->None:
     # motion.shape (frame, 22, 3)
@@ -143,9 +165,14 @@ def predict(clip_text):
         text = clip.tokenize([clip_text], truncate=True)
     feat_clip_text = clip_model.encode_text(text).float()
     index_motion = trans_encoder.sample(feat_clip_text[0:1], False)
+    print('motion', index_motion, index_motion.shape)
     pred_pose = net.forward_decoder(index_motion)
     pred_xyz = recover_from_ric((pred_pose * std + mean).float(), 22)
-
+    xyz = pred_xyz.reshape(1, -1, 22, 3)
+    np.save('motion.npy', xyz.detach().cpu().numpy())
+    import visualization.plot_3d_global as plot_3d
+    pose_vis = plot_3d.draw_to_batch(xyz.detach().cpu().numpy(),clip_text, ['example.gif'])
+    
     return render(
         pred_xyz.detach().cpu().numpy().squeeze(axis=0)
     )
